@@ -3,3 +3,6 @@ physionet.org
 .venv
 *.csv
 *.png
+/features
+.DS_Store
+*.pyc
