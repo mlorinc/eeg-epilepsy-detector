@@ -8,3 +8,6 @@ physionet.org
 .DS_Store
 *.pyc
 /experiments
+/experiment-assets
+*.joblib
+*.pyc
