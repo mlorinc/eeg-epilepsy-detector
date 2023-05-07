@@ -9,6 +9,8 @@ import pathlib
 import os
 import glob
 
+# Frequency bands user for extraction: delta-theta, theta, alpha-beta and beta
+# The ranges were chosen by PSD observation
 f_bands = np.array([0.5, 4, 8, 16, 25])
 DATA_ROOT = pathlib.Path(os.path.join("physionet.org", "files", "chbmit", "1.0.0"))
 FEATURE_ROOT = pathlib.Path("features_simple_3")
@@ -20,6 +22,7 @@ class Features(metaclass=abc.ABCMeta):
         pass
 
 class PSDFeatures(Features):
+    """PSD vector factory"""
     def __init__(self) -> None:
         # Dimension (bands, channels) - (M, N)
         self.energies = None
@@ -51,6 +54,7 @@ class PSDFeatures(Features):
 
 
 class EpochFeatures(Features):
+    """Epoch vector factory"""
     def __init__(self) -> None:
         self.mean = None
         self.std = None
@@ -100,6 +104,7 @@ class EpochFeatures(Features):
 
 
 def extract_psd_features(epoch_psd: mne.epochs.EpochsSpectrum) -> PSDFeatures:
+    """Extract psd features from epoch PSd"""
     psd_features = PSDFeatures()
     psd, freqs = epoch_psd.get_data(return_freqs=True)
 
@@ -121,6 +126,7 @@ def extract_psd_features(epoch_psd: mne.epochs.EpochsSpectrum) -> PSDFeatures:
 
 
 def extract_epoch_features(epoch: mne.Epochs) -> EpochFeatures:
+    """Extract features from epoch"""
     epoch_features = EpochFeatures()
     data = epoch.get_data()[0, :, :]
     q = np.quantile(data, [0.25, 0.5, 0.75], axis=-1)
@@ -142,6 +148,7 @@ def extract_epoch_features(epoch: mne.Epochs) -> EpochFeatures:
     epoch_features.q3 = q[2].ravel()
     epoch_features.iqr = epoch_features.q3 - epoch_features.q1
 
+    # Assert shapes are equal
     assert (epoch_features.mean.shape == epoch_features.std.shape)
     assert (epoch_features.std.shape == epoch_features.var.shape)
     assert (epoch_features.var.shape == epoch_features.kurtosis.shape)
@@ -158,6 +165,7 @@ def extract_epoch_features(epoch: mne.Epochs) -> EpochFeatures:
 
 
 def get_labels(channels: List[str], count: int) -> List[str]:
+    """Get labels for features and apply each to channel and patient"""
     labels = []
     for i in range(1, count + 1, 1):
         psd_labels = PSDFeatures.labels(channels, str(i))
@@ -167,12 +175,14 @@ def get_labels(channels: List[str], count: int) -> List[str]:
 
 
 def get_vector(psd_features: PSDFeatures, epoch_features: EpochFeatures) -> np.ndarray:
+    """Get training vector"""
     psd_vector = psd_features.to_vector()
     epoch_vector = epoch_features.to_vector()
 
     return np.concatenate((psd_vector, epoch_vector))
 
 def get_window(epochs: mne.Epochs, psds: mne.time_frequency.EpochsSpectrum, window):
+    """Perform feature extraction on epochs captured by sliding window"""
     assert (len(epochs) == window)
     assert (len(psds) == window)
 
@@ -194,17 +204,11 @@ def get_edf_features(epochs: mne.Epochs, spectrum: mne.time_frequency.EpochsSpec
 
 def recording_to_feature_dataset(filename: str, window: int, seizures_df: pd.DataFrame):
     raw = mne.io.read_raw_edf(filename, preload=True)
-    # raw = raw.pick_channels([
-    #     "FP1-FP7", "F7-T7", "T7-P7", "P7-O1", "FP1-F3", "F3-C3", "C3-P3",
-    #     "P3-O1", "FP2-F4", "F4-C4", "C4-P4", "P4-O2", "FP2-F8", "F8-T8",
-    #     "T8-P8", "P8-O2", "FZ-CZ", "CZ-PZ"
-    # ], ignore_missing=True)
-    # raw.set_eeg_reference("average", projection=True, set_bads="zeros")
-
+    # Filter unwanted channels: T7-P7 negated duplicated, -- unused, T8-P8- duplicates
     allowed_channels = [ch for ch in raw.ch_names if "--" not in ch and ch != "T7-P7" and "T8-P8-" not in ch]
 
     raw = raw.pick_types(eeg=True)
-    # take only 18 channels
+    # take only first 18 channels
     raw.pick_channels(allowed_channels[:18])
     print(raw.ch_names)
 
@@ -250,9 +254,3 @@ def create_patients_feature_dataset(window: int, seizure_summary: pd.DataFrame, 
         patient_root.mkdir(parents=True, exist_ok=False)
         create_patient_feature_dataset(patient, window, seizure_summary, patient_root / FEATURE_FILENAME)
     
-
-def load_features() -> pd.DataFrame:
-    return pd.read_pickle("example.pck")
-
-def get_band_feature_labels(df: pd.DataFrame) -> List[str]:
-    return [name for name in df.columns.values if "hz" in name]

@@ -6,8 +6,6 @@ from sklearn.pipeline import Pipeline
 from classifier.evaluate import merge_epochs, get_seizure_counts
 from time import time
 
-debug = False
-
 feature_chromosome_mapping = [
     "psd_energy_0.5hz_4.0hz",
     "psd_energy_4.0hz_8.0hz",
@@ -37,6 +35,7 @@ columns = ["chrom", "gen", "fit_sens", "fit_lat",
 
 
 class NSGA(object):
+    """NSGA II implementation for scipy-learn classifiers"""
     def __init__(self,
                  population_size: int,
                  generation_count: int,
@@ -61,13 +60,18 @@ class NSGA(object):
         self.data = []
 
     def create_population(self):
+        """Create new population from scratch"""
         return [Chromosome(n=self.chromosome_size) for _ in range(self.population_size)]
 
     def get_report(self):
+        """Get optimization report"""
         return pd.DataFrame(data=self.data, columns=columns)
 
     def evaluate(self, chrom: Chromosome):
+        """Evaluate chromosome based on interfered attributes"""
         model: Pipeline = self.get_model()
+
+        # Filter features for training
         features = [feature for i, feature in enumerate(
             feature_chromosome_mapping) if chrom.chromosome[i] == 1]
         labels = []
@@ -77,10 +81,12 @@ class NSGA(object):
                 if feature in label:
                     labels.append(label)
 
+        # Make sure the classifier does not train on empty dataset
         if not labels:
             chrom.evaluate(0, 0, 0)
             return
 
+        # Train and measure time
         start = time()
         model.fit(self.train_data[labels], self.train_data["class"])
         y_pred = model.predict(self.test_data[labels])
@@ -99,6 +105,7 @@ class NSGA(object):
         fn = df_test.loc[(df_test["class"] == 1) & (
             df_test["pred"] == -1), ["first_epoch", "class", "pred", "seizure_start"]]
 
+        # Save only beginnings of seizure events
         tp = merge_epochs(tp)
         fn = merge_epochs(fn)
         tp["latency"] = (tp["first_epoch"] - tp["seizure_start"]) * 2
@@ -115,33 +122,38 @@ class NSGA(object):
                           len(fn.index), duration))
 
     def create_generation(self):
-        if debug:
-            self.current_generation += 1
-            return self.current_generation > self.generation_count
-
         population = self.chromosomes
+
+        # Do not do anything if max generation was reached
+        if self.current_generation >= self.generation_count:
+            return True
+
+        # Evaluate chromosome
         for i, pop in enumerate(population):
             print(f"[{self.current_generation}] Evaluating chromosome {i}")
             self.evaluate(pop)
 
+        # Sort chromosomes based on their fitness attributes
         sorted_population = bubble_sort(population[:])
 
+        # Save the best chromosome
         if self.best_chromosome == None or sorted_population[0].is_dominating(self.best_chromosome):
             self.best_chromosome = sorted_population[0]
 
-        if self.current_generation >= self.generation_count:
-            return True
-
+        # Select 2 of the best chromosomes
         elitists = sorted_population[:2]
+
+        # Create new population without the 2 best chromosomes
         population = [pop for pop in population if pop not in elitists]
 
+        # Randomly select competing chromosomes for tournament
         left_challengers = random.sample(population, self.population_size // 2)
         right_challengers = [
             pop for pop in population if pop in left_challengers]
         random.shuffle(left_challengers)
         random.shuffle(right_challengers)
 
-        # perform tournaments selection
+        # Perform tournaments selection
         parents: List[Chromosome] = []
         for left, right in zip(left_challengers, right_challengers):
             if left.is_dominating(right):
@@ -149,7 +161,7 @@ class NSGA(object):
             else:
                 parents.append(right)
 
-        # perform cross and mutation
+        # Perform cross and mutation
         new_population = parents + elitists
         for left, right in zip(parents[:-2], parents[1:-1]):
             child_a, child_b = left.cross(right, p=0.7)

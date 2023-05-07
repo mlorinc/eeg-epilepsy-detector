@@ -1,4 +1,3 @@
-import mne
 import numpy as np
 import pandas as pd
 import features.tf_features as features
@@ -8,15 +7,34 @@ from classifier.evolution import NSGA, feature_chromosome_mapping
 from classifier.model import create_model, save_model, load_model
 from classifier.train import test_files
 import pathlib
+import argparse
 
-def create_dataset():
-    features.create_patients_feature_dataset(3, summary.get_seizure_summary(), [12])
+def parse_arguments():
+    parser = argparse.ArgumentParser(description="Feature optimization for KNN classifier using NSGA II")
 
-def main():
-    df = pd.read_csv(features.FEATURE_ROOT / "chb12" / features.FEATURE_FILENAME)
+    subparsers = parser.add_subparsers(dest="command", title="subcommands")
+
+    extract_parser = subparsers.add_parser("features:extract", help="extract features from EEG data")
+    extract_parser.add_argument("--window-size", type=int, default=3, help="size of the sliding window")
+    extract_parser.add_argument("patient", type=int, nargs="+", help="patient number")
+
+    optimize_parser = subparsers.add_parser("features:optimize", help="find optimal features using EA")
+    optimize_parser.add_argument("experiment-folder", type=str, help="experiment folder where optimization statistics will be stored")
+    optimize_parser.add_argument("patient", type=int, help="patient number")
+
+    analyze_parser = subparsers.add_parser("features:analyze", help="analyze results of EA optimization")
+    analyze_parser.add_argument("experiment-folder", type=str, help="experiment folder where statistics data are located")
+    return parser, parser.parse_args()
+
+def extract(args):
+    features.create_patients_feature_dataset(args.window, summary.get_seizure_summary(), args.patient)
+
+def optimize(args):
+    df = pd.read_csv(features.FEATURE_ROOT / f"chb{args.patient}" / features.FEATURE_FILENAME)
     df_train = df.loc[~df["file"].isin(test_files)]
     df_test = df.loc[df["file"].isin(test_files)]
 
+    # Perform dry test run with extremely small dataset
     # df_pos = df_train.loc[df_train["class"] == 1, :][0:2]
     # df_neg = df_train.loc[df_train["class"] == -1, :][0:2]
 
@@ -27,7 +45,7 @@ def main():
     # df_test = pd.concat((df_test_pos, df_test_neg))
 
     # P * G <= 420
-    out_folder = pathlib.Path("experiments")
+    out_folder = pathlib.Path(args["experiment-folder"] or "experiments")
     out_folder.mkdir(parents=True, exist_ok=False)
     for i in range(30):
         nsga = NSGA(22, 20, len(feature_chromosome_mapping), np.inf, create_model, df_train, df_test)
@@ -44,5 +62,24 @@ def main():
         report_df.to_csv(out_folder / f"nsga.{i}.csv.gz", index=False, header=True)
         save_model(nsga.best_chromosome.model, out_folder / f"model.{i}.joblib")
         print(report_df)
+
+def analyze(args):
+    pass
+
+def main():
+    parser, args = parse_arguments()
+    if args.command == "features:extract":
+        print(f"Extracting features for patients {', '.join(args.patient)} with window size {args.window_size}")
+        extract(args)
+    elif args.command == "features:optimize":
+        print(f"Optimizing features for patient {args.patient} in folder {args.experiment_folder}")
+        optimize(args)
+    elif args.command == "features:analyze":
+        print(f"Analyzing result of EA in folder {args.experiment_folder}")
+        analyze(args)
+    else:
+        parser.print_help()
+        exit(1)
+    exit(0)
 
 main()
