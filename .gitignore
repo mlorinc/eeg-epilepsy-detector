@@ -4,5 +4,7 @@ physionet.org
 *.csv
 *.png
 /features
+/features_simple*
 .DS_Store
 *.pyc
+/experiments

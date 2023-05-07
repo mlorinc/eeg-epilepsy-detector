@@ -1,49 +1,48 @@
 import mne
 import numpy as np
 import pandas as pd
-import scipy.signal
 import features.tf_features as features
 import features.summary as summary
+import numpy as np
+from classifier.evolution import NSGA, feature_chromosome_mapping
+from classifier.model import create_model, save_model, load_model
+from classifier.train import test_files
+import pathlib
 
-def eeg_power_band(epochs, picks: str):
-    # specific frequency bands
-    FREQ_BANDS = {"delta": [0.5, 4.5],
-                  "theta": [4.5, 8.5],
-                  "alpha": [8.5, 11.5],
-                  "sigma": [11.5, 15.5],
-                  "beta": [15.5, 30]}
-
-    spectrum = epochs.compute_psd(picks='eeg', fmin=0.5, fmax=25.)
-    psds, freqs = spectrum.get_data(return_freqs=True)
-    # Normalize the PSDs
-    psds /= np.sum(psds, axis=-1, keepdims=True)
-
-    X = []
-    for fmin, fmax in FREQ_BANDS.values():
-        data = psds[:, :, (freqs >= fmin) & (freqs < fmax)]
-        psds_band_mean = data.mean(axis=-1)
-        psds_band_var = data.var(axis=-1)
-        psds_band_std = data.std(axis=-1)
-        psds_band_average = data.average(axis=-1)
-
-        X.append(psds_band_mean.reshape(len(psds), -1))
-
-    return np.concatenate(X, axis=1)
-
-def power_spectrum(epoch: mne.io.edf.edf.RawEDF, picks: str):
-    f, pxx = scipy.signal.welch(epoch.get_data(picks=[picks]), fs=256, nfft=256, scaling="spectrum")
-    print(pxx)
-    print(f)
-    # pxx = 10 * np.log10(pxx)
-    return f.reshape(-1), pxx.reshape(-1)
-
-def ica(raw, n_components):
-    ica = mne.preprocessing.ICA(n_components=n_components, max_iter="auto", random_state=42)
-    ica.fit(raw)
-    ica.apply(raw)
-    return raw
+def create_dataset():
+    features.create_patients_feature_dataset(3, summary.get_seizure_summary(), [12])
 
 def main():
-    features.create_patients_feature_dataset(3, summary.get_seizure_summary(), (12, 13))
+    df = pd.read_csv(features.FEATURE_ROOT / "chb12" / features.FEATURE_FILENAME)
+    df_train = df.loc[~df["file"].isin(test_files)]
+    df_test = df.loc[df["file"].isin(test_files)]
+
+    # df_pos = df_train.loc[df_train["class"] == 1, :][0:2]
+    # df_neg = df_train.loc[df_train["class"] == -1, :][0:2]
+
+    # df_test_pos = df_test.loc[df_test["class"] == 1, :][0:2]
+    # df_test_neg = df_test.loc[df_test["class"] == -1, :][0:2]
+
+    # df_train = pd.concat((df_pos, df_neg))
+    # df_test = pd.concat((df_test_pos, df_test_neg))
+
+    # P * G <= 420
+    out_folder = pathlib.Path("experiments")
+    out_folder.mkdir(parents=True, exist_ok=False)
+    for i in range(30):
+        nsga = NSGA(22, 20, len(feature_chromosome_mapping), np.inf, create_model, df_train, df_test)
+
+        counter = 0
+        while not nsga.create_generation():
+            print(f"[{counter}] Sensitivity: {nsga.best_chromosome.sensitivity}")
+            print(f"[{counter}] Latency: {nsga.best_chromosome.latency}")
+            print(f"[{counter}] Specifity: {nsga.best_chromosome.specifity}")
+            print(f"[{counter}] Chromosome: {''.join(map(str, nsga.best_chromosome.chromosome))}")
+            counter += 1 
+        
+        report_df = nsga.get_report()
+        report_df.to_csv(out_folder / f"nsga.{i}.csv.gz", index=False, header=True)
+        save_model(nsga.best_chromosome.model, out_folder / f"model.{i}.joblib")
+        print(report_df)
 
 main()
