@@ -2,6 +2,7 @@ from classifier.chromosome import Chromosome
 from typing import List
 import random
 import pandas as pd
+import numpy as np 
 from sklearn.pipeline import Pipeline
 from classifier.evaluate import merge_epochs, get_seizure_counts
 from time import time
@@ -30,6 +31,7 @@ feature_chromosome_mapping = [
     "epoch_iqr"
 ]
 
+psd_features_end = feature_chromosome_mapping.index("epoch_mean")
 columns = ["chrom", "gen", "fit_sens", "fit_lat",
            "fit_spec", "tp", "tn", "fp", "fn", "duration"]
 
@@ -109,6 +111,7 @@ class NSGA(object):
         tp = merge_epochs(tp)
         fn = merge_epochs(fn)
         tp["latency"] = (tp["first_epoch"] - tp["seizure_start"]) * 2
+        tp.loc[tp["latency"].isnull(), "latency"] = np.inf
         string_chromosome = "".join(map(str, chrom.chromosome))
         sensitivity = len(tp.index) / self.seizure_count
         specificity = len(fn.index) / 24

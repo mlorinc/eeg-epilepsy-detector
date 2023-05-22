@@ -37,7 +37,7 @@ They are compared based on priority, where sensitivity is maximized, latency min
 ### Test data
 
 Seizure detection was tested only on patient 12 as this patient has the most seizure events and the classifier
-was built on Shoeb's classifier which works on single patient only.
+was built on [Shoeb's classifier](https://physionet.org/content/chbmit/1.0.0/shoeb-icml-2010.pdf) which works on single patient only.
 The biggest priority was to ensure train data and test data have the same ratio of seizure events, which
 is close to 20:20 in that case. Moreover, to ensure experimental data can be used over and over again,
 only 1 train/test dataset was created to allow experiment reproduction in the future, despite the

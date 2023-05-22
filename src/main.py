@@ -52,7 +52,7 @@ def optimize(args):
     # P * G <= 420
     out_folder = pathlib.Path(args.experiment_folder or "experiments")
     out_folder.mkdir(parents=True, exist_ok=False)
-    for i in range(30):
+    for i in range(1):
         nsga = NSGA(22, 20, len(feature_chromosome_mapping), np.inf, create_model, df_train, df_test)
 
         counter = 0

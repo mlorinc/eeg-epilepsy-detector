@@ -11,3 +11,5 @@ physionet.org
 /experiment-assets
 *.joblib
 *.pyc
+*.pdf
+*.gz

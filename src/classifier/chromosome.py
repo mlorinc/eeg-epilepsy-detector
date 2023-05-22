@@ -35,14 +35,10 @@ class Chromosome(object):
         if np.abs(self.sensitivity - chromosome.sensitivity) >= self.sensitivity_margin:
             if self.sensitivity > chromosome.sensitivity:
                 return True
-            return False
-        elif np.abs(self.latency - chromosome.latency) >= self.latency_margin:
-            if self.latency < chromosome.latency:
-                return True
-            return False
-        elif np.abs(self.specifity - chromosome.specifity) >= self.specifity_margin:
-            if self.specifity < chromosome.specifity:
-                return True
-            return False
-        else:
-            return False
+            if np.abs(self.latency - chromosome.latency) >= self.latency_margin:
+                if self.latency < chromosome.latency:
+                    return True
+                if np.abs(self.specifity - chromosome.specifity) >= self.specifity_margin:
+                    if self.specifity < chromosome.specifity:
+                        return True
+        return False
